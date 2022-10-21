@@ -1,7 +1,7 @@
 import { Interface } from '@ethersproject/abi';
 import { Address, MultiCallInput, MultiCallOutput } from '../../types';
 import { PoolState, VaultPriceFeedConfig } from './types';
-import VaultPriceFeedAbi from '../../abi/gmx/vault-price-feed.json';
+import VaultPriceFeedAbi from '../../abi/handle-fi/VaultPriceFeed.json';
 import { ChainLinkSubscriber } from '../../lib/chainlink';
 import { DeepReadonly } from 'ts-essentials';
 
@@ -10,7 +10,7 @@ export class VaultPriceFeed<State> {
   PRICE_PRECISION = 10n ** 30n;
   ONE_USD = this.PRICE_PRECISION;
 
-  static interface = new Interface(VaultPriceFeedAbi);
+  static interface = new Interface(VaultPriceFeedAbi as any);
 
   protected isAmmEnabled: boolean;
   protected isSecondaryPriceEnabled: boolean;

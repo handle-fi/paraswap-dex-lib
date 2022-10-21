@@ -7,7 +7,7 @@ import { PoolState, DexParams, PoolConfig } from './types';
 import { Vault } from './vault';
 import { USDG } from './usdg';
 import { Contract } from 'web3-eth-contract';
-import ReaderABI from '../../abi/gmx/reader.json';
+import ReaderABI from '../../abi/handle-fi/Reader.json';
 import { VaultPriceFeed } from './vault-price-feed';
 
 const MAX_AMOUNT_IN_CACHE_TTL = 5 * 60;

@@ -3,7 +3,7 @@ import { Interface } from '@ethersproject/abi';
 import { AsyncOrSync, DeepReadonly } from 'ts-essentials';
 import { PartialEventSubscriber } from '../../composed-event-subscriber';
 import { Lens } from '../../lens';
-import VaultABI from '../../abi/gmx/vault.json';
+import VaultABI from '../../abi/handle-fi/Vault.json';
 import { VaultUtils } from './vault-utils';
 import { VaultConfig, VaultPriceFeedConfig, VaultState } from './types';
 import { USDG } from './usdg';
@@ -21,7 +21,7 @@ import { bigIntify } from '../../utils';
 import { VaultPriceFeed } from './vault-price-feed';
 
 export class Vault<State> extends PartialEventSubscriber<State, VaultState> {
-  static readonly interface: Interface = new Interface(VaultABI);
+  static readonly interface: Interface = new Interface(VaultABI as any);
   BASIS_POINTS_DIVISOR = 10000n;
   PRICE_PRECISION = 10n ** 30n;
   ONE_USD = this.PRICE_PRECISION;
