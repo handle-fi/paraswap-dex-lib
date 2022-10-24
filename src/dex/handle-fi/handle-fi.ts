@@ -11,25 +11,37 @@ import {
 } from '../../types';
 import { SwapSide, Network } from '../../constants';
 import * as CALLDATA_GAS_COST from '../../calldata-gas-cost';
-import { getDexKeysWithNetwork } from '../../utils';
+import { getBigIntPow, getDexKeysWithNetwork } from '../../utils';
 import { IDex } from '../../dex/idex';
 import { IDexHelper } from '../../dex-helper/idex-helper';
 import { DexParams, HandleFiData } from './types';
 import { SimpleExchange } from '../simple-exchange';
 import { HandleFiConfig, Adapters } from './config';
 import { HandleFiEventPool } from './handle-fi-pool';
+import { Interface } from '@ethersproject/abi';
+import ERC20ABI from '../../abi/erc20.json';
+import RouterInterface from '../../abi/handle-fi/Router.json';
+import { Vault } from './vault';
+import { fetchEncodedSignedQuotes } from './fetchSignedQuote';
+
+const HANDLE_FI_GAS_COST = 300_000;
 
 export class HandleFi extends SimpleExchange implements IDex<HandleFiData> {
-  protected eventPools: HandleFiEventPool | null = null;
+  protected pool: HandleFiEventPool | null = null;
+  protected supportedTokensMap: { [address: string]: boolean } = {};
+  protected supportedTokens: Token[] = [];
 
   readonly hasConstantPriceLargeAmounts = false;
-  // TODO: set true here if protocols works only with wrapped asset
   readonly needWrapNative = true;
 
   readonly isFeeOnTransferSupported = false;
 
   public static dexKeysWithNetwork: { key: string; networks: Network[] }[] =
     getDexKeysWithNetwork(HandleFiConfig);
+
+  public static erc20Interface = new Interface(ERC20ABI);
+  public static routerInterface = new Interface(RouterInterface);
+  vaultUSDBalance: number = 0;
 
   logger: Logger;
 
@@ -54,8 +66,10 @@ export class HandleFi extends SimpleExchange implements IDex<HandleFiData> {
       blockNumber,
       this.dexHelper.multiContract,
     );
-
-    this.eventPools = new HandleFiEventPool(
+    config.tokenAddresses.forEach(
+      (token: Address) => (this.supportedTokensMap[token] = true),
+    );
+    this.pool = new HandleFiEventPool(
       this.dexKey,
       this.network,
       this.dexHelper,
@@ -63,8 +77,8 @@ export class HandleFi extends SimpleExchange implements IDex<HandleFiData> {
       config,
     );
     this.dexHelper.blockManager.subscribeToLogs(
-      this.eventPools,
-      this.eventPools.addressesSubscribed,
+      this.pool,
+      this.pool.addressesSubscribed,
       blockNumber,
     );
   }
@@ -77,15 +91,27 @@ export class HandleFi extends SimpleExchange implements IDex<HandleFiData> {
 
   // Returns list of pool identifiers that can be used
   // for a given swap. poolIdentifiers must be unique
-  // across DEXes. It is recommended to use
-  // ${dexKey}_${poolAddress} as a poolIdentifier
+  // across DEXes.
   async getPoolIdentifiers(
     srcToken: Token,
     destToken: Token,
     side: SwapSide,
     blockNumber: number,
   ): Promise<string[]> {
-    // TODO: complete me!
+    if (side === SwapSide.BUY || !this.pool) return [];
+    const srcAddress = this.dexHelper.config
+      .wrapETH(srcToken)
+      .address.toLowerCase();
+    const destAddress = this.dexHelper.config
+      .wrapETH(destToken)
+      .address.toLowerCase();
+    if (
+      srcAddress !== destAddress &&
+      this.supportedTokensMap[srcAddress] &&
+      this.supportedTokensMap[destAddress]
+    ) {
+      return [`${this.dexKey}_${srcAddress}`, `${this.dexKey}_${destAddress}`];
+    }
     return [];
   }
 
@@ -101,19 +127,53 @@ export class HandleFi extends SimpleExchange implements IDex<HandleFiData> {
     blockNumber: number,
     limitPools?: string[],
   ): Promise<null | ExchangePrices<HandleFiData>> {
-    // TODO: complete me!
-    return null;
+    if (side === SwapSide.BUY || !this.pool) return null;
+    const srcAddress = this.dexHelper.config
+      .wrapETH(srcToken)
+      .address.toLowerCase();
+    const destAddress = this.dexHelper.config
+      .wrapETH(destToken)
+      .address.toLowerCase();
+    if (
+      srcAddress === destAddress ||
+      !(
+        this.supportedTokensMap[srcAddress] &&
+        this.supportedTokensMap[destAddress]
+      )
+    )
+      return null;
+    const srcPoolIdentifier = `${this.dexKey}_${srcAddress}`;
+    const destPoolIdentifier = `${this.dexKey}_${destAddress}`;
+    const pools = [srcPoolIdentifier, destPoolIdentifier];
+    if (limitPools && pools.some(p => !limitPools.includes(p))) return null;
+
+    const unitVolume = getBigIntPow(srcToken.decimals);
+    const prices = await this.pool.getAmountOut(
+      srcAddress,
+      destAddress,
+      [unitVolume, ...amounts],
+      blockNumber,
+    );
+
+    if (!prices) return null;
+
+    return [
+      {
+        prices: prices.slice(1),
+        unit: prices[0],
+        gasCost: HANDLE_FI_GAS_COST,
+        exchange: this.dexKey,
+        data: {},
+        poolAddresses: [this.params.vault],
+      },
+    ];
   }
 
   // Returns estimated gas cost of calldata for this DEX in multiSwap
   getCalldataGasCost(poolPrices: PoolPrices<HandleFiData>): number | number[] {
-    // TODO: update if there is any payload in getAdapterParam
     return CALLDATA_GAS_COST.DEX_NO_PAYLOAD;
   }
 
-  // Encode params required by the exchange adapter
-  // Used for multiSwap, buy & megaSwap
-  // Hint: abiCoder.encodeParameter() could be useful
   getAdapterParam(
     srcToken: string,
     destToken: string,
@@ -122,23 +182,13 @@ export class HandleFi extends SimpleExchange implements IDex<HandleFiData> {
     data: HandleFiData,
     side: SwapSide,
   ): AdapterExchangeParam {
-    // TODO: complete me!
-    const { exchange } = data;
-
-    // Encode here the payload for adapter
-    const payload = '';
-
     return {
-      targetExchange: exchange,
-      payload,
+      targetExchange: this.params.vault,
+      payload: '0x',
       networkFee: '0',
     };
   }
 
-  // Encode call data used by simpleSwap like routers
-  // Used for simpleSwap & simpleBuy
-  // Hint: this.buildSimpleParamWithoutWETHConversion
-  // could be useful
   async getSimpleParam(
     srcToken: string,
     destToken: string,
@@ -147,44 +197,112 @@ export class HandleFi extends SimpleExchange implements IDex<HandleFiData> {
     data: HandleFiData,
     side: SwapSide,
   ): Promise<SimpleExchangeParam> {
-    // TODO: complete me!
-    const { exchange } = data;
-
-    // Encode here the transaction arguments
-    const swapData = '';
-
-    return this.buildSimpleParamWithoutWETHConversion(
+    const signedQuoteData = await fetchEncodedSignedQuotes([
       srcToken,
-      srcAmount,
       destToken,
-      destAmount,
-      swapData,
-      exchange,
-    );
+    ]);
+
+    return {
+      callees: [srcToken, this.params.vault],
+      calldata: [
+        HandleFi.erc20Interface.encodeFunctionData('approve', [
+          this.params.router,
+          srcAmount,
+        ]),
+        HandleFi.routerInterface.encodeFunctionData('swap', [
+          [srcToken, destToken],
+          srcAmount,
+          0,
+          this.augustusAddress,
+          signedQuoteData,
+        ]),
+      ],
+      values: ['0', '0'],
+      networkFee: '0',
+    };
   }
 
-  // This is called once before getTopPoolsForToken is
-  // called for multiple tokens. This can be helpful to
-  // update common state required for calculating
-  // getTopPoolsForToken. It is optional for a DEX
-  // to implement this
   async updatePoolState(): Promise<void> {
-    // TODO: complete me!
+    if (!this.supportedTokens.length) {
+      const tokenAddresses = await HandleFiEventPool.getWhitelistedTokens(
+        this.params.vault,
+        'latest',
+        this.dexHelper.multiContract,
+      );
+
+      const decimalsCallData =
+        HandleFi.erc20Interface.encodeFunctionData('decimals');
+      const tokenBalanceMultiCall = tokenAddresses.map(t => ({
+        target: t,
+        callData: decimalsCallData,
+      }));
+      const res = (
+        await this.dexHelper.multiContract.methods
+          .aggregate(tokenBalanceMultiCall)
+          .call()
+      ).returnData;
+
+      const tokenDecimals = res.map((r: any) =>
+        parseInt(
+          HandleFi.erc20Interface
+            .decodeFunctionResult('decimals', r)[0]
+            .toString(),
+        ),
+      );
+
+      this.supportedTokens = tokenAddresses.map((t, i) => ({
+        address: t,
+        decimals: tokenDecimals[i],
+      }));
+    }
+
+    const erc20BalanceCalldata = HandleFi.erc20Interface.encodeFunctionData(
+      'balanceOf',
+      [this.params.vault],
+    );
+    const tokenBalanceMultiCall = this.supportedTokens.map(t => ({
+      target: t.address,
+      callData: erc20BalanceCalldata,
+    }));
+    const res = (
+      await this.dexHelper.multiContract.methods
+        .aggregate(tokenBalanceMultiCall)
+        .call()
+    ).returnData;
+    const tokenBalances = res.map((r: any) =>
+      BigInt(
+        HandleFi.erc20Interface
+          .decodeFunctionResult('balanceOf', r)[0]
+          .toString(),
+      ),
+    );
+    const tokenBalancesUSD = await Promise.all(
+      this.supportedTokens.map((t, i) =>
+        this.dexHelper.getTokenUSDPrice(t, tokenBalances[i]),
+      ),
+    );
+    this.vaultUSDBalance = tokenBalancesUSD.reduce(
+      (sum: number, curr: number) => sum + curr,
+    );
   }
 
   // Returns list of top pools based on liquidity. Max
   // limit number pools should be returned.
   async getTopPoolsForToken(
-    tokenAddress: Address,
+    _tokenAddress: Address,
     limit: number,
   ): Promise<PoolLiquidity[]> {
-    //TODO: complete me!
-    return [];
-  }
-
-  // This is optional function in case if your implementation has acquired any resources
-  // you need to release for graceful shutdown. For example, it may be any interval timer
-  releaseResources(): AsyncOrSync<void> {
-    // TODO: complete me!
+    const tokenAddress = _tokenAddress.toLowerCase();
+    if (!this.supportedTokens.some(t => t.address === tokenAddress)) return [];
+    return [
+      {
+        exchange: this.dexKey,
+        address: this.params.vault,
+        connectorTokens: this.supportedTokens.filter(
+          t => t.address !== tokenAddress,
+        ),
+        liquidityUSD: this.vaultUSDBalance,
+      },
+    ];
   }
 }

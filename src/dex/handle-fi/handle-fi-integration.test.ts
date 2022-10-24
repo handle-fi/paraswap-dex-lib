@@ -12,239 +12,110 @@ import {
   checkConstantPoolPrices,
 } from '../../../tests/utils';
 import { Tokens } from '../../../tests/constants-e2e';
+import { HandleFiConfig } from './config';
+import ReaderABI from '../../abi/handle-fi/Reader.json';
+import { ADDRESS_TO_CURRENCY, SYMBOL_TO_ADDRESS } from './handle-config';
 
-/*
-  README
-  ======
+const network = Network.ARBITRUM;
+const TokenASymbol = 'WETH';
+const TokenA = Tokens[network][TokenASymbol];
 
-  This test script adds tests for HandleFi general integration
-  with the DEX interface. The test cases below are example tests.
-  It is recommended to add tests which cover HandleFi specific
-  logic.
+const TokenBSymbol = 'fxUSD';
+const TokenB = {
+  address: SYMBOL_TO_ADDRESS[TokenBSymbol],
+  decimals: 18,
+};
 
-  You can run this individual test script by running:
-  `npx jest src/dex/<dex-name>/<dex-name>-integration.test.ts`
+const amounts = [
+  0n,
+  1000000000n,
+  2000000000n,
+  3000000000n,
+  4000000000n,
+  5000000000n,
+];
 
-  (This comment should be removed from the final implementation)
-*/
-
-function getReaderCalldata(
-  exchangeAddress: string,
-  readerIface: Interface,
-  amounts: bigint[],
-  funcName: string,
-  // TODO: Put here additional arguments you need
-) {
-  return amounts.map(amount => ({
-    target: exchangeAddress,
-    callData: readerIface.encodeFunctionData(funcName, [
-      // TODO: Put here additional arguments to encode them
-      amount,
-    ]),
-  }));
-}
-
-function decodeReaderResult(
-  results: Result,
-  readerIface: Interface,
-  funcName: string,
-) {
-  // TODO: Adapt this function for your needs
-  return results.map(result => {
-    const parsed = readerIface.decodeFunctionResult(funcName, result);
-    return BigInt(parsed[0]._hex);
-  });
-}
-
-async function checkOnChainPricing(
-  handleFi: HandleFi,
-  funcName: string,
-  blockNumber: number,
-  prices: bigint[],
-  amounts: bigint[],
-) {
-  const exchangeAddress = ''; // TODO: Put here the real exchange address
-
-  // TODO: Replace dummy interface with the real one
-  // Normally you can get it from handleFi.Iface or from eventPool.
-  // It depends on your implementation
-  const readerIface = new Interface('');
-
-  const readerCallData = getReaderCalldata(
-    exchangeAddress,
-    readerIface,
-    amounts.slice(1),
-    funcName,
-  );
-  const readerResult = (
-    await handleFi.dexHelper.multiContract.methods
-      .aggregate(readerCallData)
-      .call({}, blockNumber)
-  ).returnData;
-
-  const expectedPrices = [0n].concat(
-    decodeReaderResult(readerResult, readerIface, funcName),
-  );
-
-  expect(prices).toEqual(expectedPrices);
-}
-
-async function testPricingOnNetwork(
-  handleFi: HandleFi,
-  network: Network,
-  dexKey: string,
-  blockNumber: number,
-  srcTokenSymbol: string,
-  destTokenSymbol: string,
-  side: SwapSide,
-  amounts: bigint[],
-  funcNameToCheck: string,
-) {
-  const networkTokens = Tokens[network];
-
-  const pools = await handleFi.getPoolIdentifiers(
-    networkTokens[srcTokenSymbol],
-    networkTokens[destTokenSymbol],
-    side,
-    blockNumber,
-  );
-  console.log(
-    `${srcTokenSymbol} <> ${destTokenSymbol} Pool Identifiers: `,
-    pools,
-  );
-
-  expect(pools.length).toBeGreaterThan(0);
-
-  const poolPrices = await handleFi.getPricesVolume(
-    networkTokens[srcTokenSymbol],
-    networkTokens[destTokenSymbol],
-    amounts,
-    side,
-    blockNumber,
-    pools,
-  );
-  console.log(
-    `${srcTokenSymbol} <> ${destTokenSymbol} Pool Prices: `,
-    poolPrices,
-  );
-
-  expect(poolPrices).not.toBeNull();
-  if (handleFi.hasConstantPriceLargeAmounts) {
-    checkConstantPoolPrices(poolPrices!, amounts, dexKey);
-  } else {
-    checkPoolPrices(poolPrices!, amounts, side, dexKey);
-  }
-
-  // Check if onchain pricing equals to calculated ones
-  await checkOnChainPricing(
-    handleFi,
-    funcNameToCheck,
-    blockNumber,
-    poolPrices![0].prices,
-    amounts,
-  );
-}
+const dexKey = 'HandleFi';
+const params = HandleFiConfig[dexKey][network];
+const readerInterface = new Interface(ReaderABI);
 
 describe('HandleFi', function () {
-  const dexKey = 'HandleFi';
-  let blockNumber: number;
-  let handleFi: HandleFi;
-
-  describe('Mainnet', () => {
-    const network = Network.MAINNET;
+  it('getPoolIdentifiers and getPricesVolume SELL', async function () {
     const dexHelper = new DummyDexHelper(network);
+    const blocknumber = await dexHelper.web3Provider.eth.getBlockNumber();
+    const handleFi = new HandleFi(network, dexKey, dexHelper);
 
-    const tokens = Tokens[network];
+    await handleFi.initializePricing(blocknumber);
 
-    // TODO: Put here token Symbol to check against
-    // Don't forget to update relevant tokens in constant-e2e.ts
-    const srcTokenSymbol = 'srcTokenSymbol';
-    const destTokenSymbol = 'destTokenSymbol';
+    const pools = await handleFi.getPoolIdentifiers(
+      TokenA,
+      TokenB,
+      SwapSide.SELL,
+      blocknumber,
+    );
+    console.log(`${TokenASymbol} <> ${TokenBSymbol} Pool Identifiers: `, pools);
 
-    const amountsForSell = [
-      0n,
-      1n * BI_POWS[tokens[srcTokenSymbol].decimals],
-      2n * BI_POWS[tokens[srcTokenSymbol].decimals],
-      3n * BI_POWS[tokens[srcTokenSymbol].decimals],
-      4n * BI_POWS[tokens[srcTokenSymbol].decimals],
-      5n * BI_POWS[tokens[srcTokenSymbol].decimals],
-      6n * BI_POWS[tokens[srcTokenSymbol].decimals],
-      7n * BI_POWS[tokens[srcTokenSymbol].decimals],
-      8n * BI_POWS[tokens[srcTokenSymbol].decimals],
-      9n * BI_POWS[tokens[srcTokenSymbol].decimals],
-      10n * BI_POWS[tokens[srcTokenSymbol].decimals],
-    ];
+    expect(pools.length).toBeGreaterThan(0);
 
-    const amountsForBuy = [
-      0n,
-      1n * BI_POWS[tokens[destTokenSymbol].decimals],
-      2n * BI_POWS[tokens[destTokenSymbol].decimals],
-      3n * BI_POWS[tokens[destTokenSymbol].decimals],
-      4n * BI_POWS[tokens[destTokenSymbol].decimals],
-      5n * BI_POWS[tokens[destTokenSymbol].decimals],
-      6n * BI_POWS[tokens[destTokenSymbol].decimals],
-      7n * BI_POWS[tokens[destTokenSymbol].decimals],
-      8n * BI_POWS[tokens[destTokenSymbol].decimals],
-      9n * BI_POWS[tokens[destTokenSymbol].decimals],
-      10n * BI_POWS[tokens[destTokenSymbol].decimals],
-    ];
+    const poolPrices = await handleFi.getPricesVolume(
+      TokenA,
+      TokenB,
+      amounts,
+      SwapSide.SELL,
+      blocknumber,
+      pools,
+    );
+    console.log(`${TokenASymbol} <> ${TokenBSymbol} Pool Prices: `, poolPrices);
 
-    beforeAll(async () => {
-      blockNumber = await dexHelper.web3Provider.eth.getBlockNumber();
-      handleFi = new HandleFi(network, dexKey, dexHelper);
-      if (handleFi.initializePricing) {
-        await handleFi.initializePricing(blockNumber);
-      }
-    });
+    expect(poolPrices).not.toBeNull();
+    if (handleFi.hasConstantPriceLargeAmounts) {
+      checkConstantPoolPrices(poolPrices!, amounts, dexKey);
+    } else {
+      checkPoolPrices(poolPrices!, amounts, SwapSide.SELL, dexKey);
+    }
 
-    it('getPoolIdentifiers and getPricesVolume SELL', async function () {
-      await testPricingOnNetwork(
-        handleFi,
-        network,
-        dexKey,
-        blockNumber,
-        srcTokenSymbol,
-        destTokenSymbol,
-        SwapSide.SELL,
-        amountsForSell,
-        '', // TODO: Put here proper function name to check pricing
-      );
-    });
+    // TODO figure out a way to test this without the on chain call
+    // // Do on chain pricing based on reader to compare
+    // const readerCallData = amounts.map(a => ({
+    //   target: params.reader,
+    //   callData: readerInterface.encodeFunctionData('getAmountOut', [
+    //     params.vault,
+    //     TokenA.address,
+    //     TokenB.address,
+    //     a.toString(),
+    //   ]),
+    // }));
 
-    it('getPoolIdentifiers and getPricesVolume BUY', async function () {
-      await testPricingOnNetwork(
-        handleFi,
-        network,
-        dexKey,
-        blockNumber,
-        srcTokenSymbol,
-        destTokenSymbol,
-        SwapSide.BUY,
-        amountsForBuy,
-        '', // TODO: Put here proper function name to check pricing
-      );
-    });
+    // const readerResult = (
+    //   await dexHelper.multiContract.methods
+    //     .aggregate(readerCallData)
+    //     .call({}, blocknumber)
+    // ).returnData;
+    // const expectedPrices = readerResult.map((p: any) =>
+    //   BigInt(
+    //     readerInterface.decodeFunctionResult('getAmountOut', p)[0].toString(),
+    //   ),
+    // );
 
-    it('getTopPoolsForToken', async function () {
-      // We have to check without calling initializePricing, because
-      // pool-tracker is not calling that function
-      const newHandleFi = new HandleFi(network, dexKey, dexHelper);
-      if (newHandleFi.updatePoolState) {
-        await newHandleFi.updatePoolState();
-      }
-      const poolLiquidity = await newHandleFi.getTopPoolsForToken(
-        tokens[srcTokenSymbol].address,
-        10,
-      );
-      console.log(`${srcTokenSymbol} Top Pools:`, poolLiquidity);
+    // expect(poolPrices![0].prices).toEqual(expectedPrices);
+  });
 
-      if (!newHandleFi.hasConstantPriceLargeAmounts) {
-        checkPoolsLiquidity(
-          poolLiquidity,
-          Tokens[network][srcTokenSymbol].address,
-          dexKey,
-        );
-      }
-    });
+  it('getTopPoolsForToken', async function () {
+    const dexHelper = new DummyDexHelper(network);
+    const handleFi = new HandleFi(network, dexKey, dexHelper);
+
+    await handleFi.updatePoolState();
+    const poolLiquidity = await handleFi.getTopPoolsForToken(
+      TokenA.address,
+      10,
+    );
+    console.log(
+      `${TokenASymbol} Top Pools:`,
+      JSON.stringify(poolLiquidity, null, 2),
+    );
+
+    if (!handleFi.hasConstantPriceLargeAmounts) {
+      checkPoolsLiquidity(poolLiquidity, TokenA.address, dexKey);
+    }
   });
 });

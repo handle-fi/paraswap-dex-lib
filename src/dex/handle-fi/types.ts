@@ -10,7 +10,7 @@ export type HandleFiData = {
   // returned by the API that can be used for
   // tx building. The data structure should be minimal.
   // Complete me!
-  exchange: Address;
+  // exchange: Address;
 };
 
 export type DexParams = {
@@ -30,8 +30,6 @@ export type VaultConfig = {
   stableTaxBasisPoints: bigint;
   taxBasisPoints: bigint;
   hasDynamicFees: bigint;
-  includeAmmPrice: boolean;
-  useSwapPricing: boolean;
   totalTokenWeights: bigint;
 };
 

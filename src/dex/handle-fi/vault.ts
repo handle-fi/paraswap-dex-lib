@@ -15,13 +15,13 @@ import {
   Log,
 } from '../../types';
 import { BlockHeader } from 'web3-eth';
-import { ADDRESS_TO_SYMBOL, ORACLE_URL } from './handle-config';
+import { ADDRESS_TO_CURRENCY, ORACLE_URL } from './handle-config';
 import axios from 'axios';
 import { bigIntify } from '../../utils';
 import { VaultPriceFeed } from './vault-price-feed';
 
 export class Vault<State> extends PartialEventSubscriber<State, VaultState> {
-  static readonly interface: Interface = new Interface(VaultABI as any);
+  static readonly interface: Interface = new Interface(VaultABI);
   BASIS_POINTS_DIVISOR = 10000n;
   PRICE_PRECISION = 10n ** 30n;
   ONE_USD = this.PRICE_PRECISION;
@@ -37,8 +37,8 @@ export class Vault<State> extends PartialEventSubscriber<State, VaultState> {
   public stableTaxBasisPoints: bigint;
   public taxBasisPoints: bigint;
   public hasDynamicFees: bigint;
-  protected includeAmmPrice: boolean;
-  protected useSwapPricing: boolean;
+  // protected includeAmmPrice: boolean;
+  // protected useSwapPricing: boolean;
   protected totalTokenWeights: bigint;
 
   constructor(
@@ -61,8 +61,8 @@ export class Vault<State> extends PartialEventSubscriber<State, VaultState> {
     this.stableTaxBasisPoints = config.stableTaxBasisPoints;
     this.taxBasisPoints = config.taxBasisPoints;
     this.hasDynamicFees = config.hasDynamicFees;
-    this.includeAmmPrice = config.includeAmmPrice;
-    this.useSwapPricing = config.useSwapPricing;
+    // this.includeAmmPrice = config.includeAmmPrice;
+    // this.useSwapPricing = config.useSwapPricing;
     this.totalTokenWeights = config.totalTokenWeights;
   }
 
@@ -71,7 +71,7 @@ export class Vault<State> extends PartialEventSubscriber<State, VaultState> {
     token: Address,
   ): Promise<bigint> {
     const reqUrl = `${ORACLE_URL}/${
-      ADDRESS_TO_SYMBOL[token.toLowerCase()]
+      ADDRESS_TO_CURRENCY[token.toLowerCase()]
     }/USD`;
     const {
       data: {
@@ -147,8 +147,6 @@ export class Vault<State> extends PartialEventSubscriber<State, VaultState> {
         'stableTaxBasisPoints',
         'taxBasisPoints',
         'hasDynamicFees',
-        'includeAmmPrice',
-        'useSwapPricing',
         'totalTokenWeights',
       ].map(fn => ({
         target: vaultAddress,
@@ -223,14 +221,6 @@ export class Vault<State> extends PartialEventSubscriber<State, VaultState> {
       ),
       hasDynamicFees: Vault.interface.decodeFunctionResult(
         'hasDynamicFees',
-        multicallOutputs[i++],
-      )[0],
-      includeAmmPrice: Vault.interface.decodeFunctionResult(
-        'includeAmmPrice',
-        multicallOutputs[i++],
-      )[0],
-      useSwapPricing: Vault.interface.decodeFunctionResult(
-        'useSwapPricing',
         multicallOutputs[i++],
       )[0],
       totalTokenWeights: BigInt(

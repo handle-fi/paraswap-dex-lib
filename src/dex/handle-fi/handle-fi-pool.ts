@@ -99,7 +99,8 @@ export class HandleFiEventPool extends ComposedEventSubscriber<PoolState> {
     _amountsIn: bigint[],
     blockNumber: number,
   ): Promise<bigint[] | null> {
-    const maxAmountIn = await this.getMaxAmountIn(_tokenIn, _tokenOut);
+    // TODO rewrite this in a way that works with H2SO
+    // const maxAmountIn = await this.getMaxAmountIn(_tokenIn, _tokenOut);
     const state = await this.getStateOrGenerate(blockNumber);
     const priceIn = await this.vault.getMinPrice(state, _tokenIn);
     const priceOut = await this.vault.getMaxPrice(state, _tokenOut);
@@ -120,7 +121,7 @@ export class HandleFiEventPool extends ComposedEventSubscriber<PoolState> {
     const tokenOutUnit = BigInt(10 ** tokenOutDecimals);
 
     return _amountsIn.map(_amountIn => {
-      if (_amountIn > maxAmountIn) return 0n;
+      // if (_amountIn > maxAmountIn) return 0n;
       let feeBasisPoints;
       {
         let usdgAmount = (_amountIn * priceIn) / this.PRICE_PRECISION;
