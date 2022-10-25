@@ -91,6 +91,55 @@ export class HandleFiEventPool extends ComposedEventSubscriber<PoolState> {
     return BigInt(maxAmount);
   }
 
+  // async getMaxAmountIn0(state: DeepReadonly<PoolState>, _tokenIn: Address, _tokenOut: Address): Promise<bigint> {
+  //   const priceIn = await this.vault.getMinPrice(state, _tokenIn);
+  //   const priceOut = await this.vault.getMaxPrice(state, _tokenOut);
+
+  //   const tokenInDecimals = this.vault.tokenDecimals[_tokenIn];
+  //   const tokenOutDecimals = this.vault.tokenDecimals[_tokenOut];
+
+  //   let amountIn: bigint;
+  //   {
+  //       const poolAmount = this.vault.poolAmounts(_tokenOut);
+  //       const reservedAmount = this.vault.reservedAmounts(_tokenOut);
+  //       const bufferAmount = this.vault.bufferAmounts(_tokenOut);
+  //       const subAmount = reservedAmount > bufferAmount
+  //           ? reservedAmount
+  //           : bufferAmount;
+  //       if (subAmount >= poolAmount) {
+  //           return 0n;
+  //       }
+  //       const availableAmount = poolAmount.sub(subAmount);
+  //       amountIn = availableAmount
+  //           .mul(priceOut)
+  //           .div(priceIn)
+  //           .mul(10**tokenInDecimals)
+  //           .div(10**tokenOutDecimals);
+  //   }
+
+  //   const maxUsdgAmount = this.vault.maxUsdgAmounts(_tokenIn);
+
+  //   if (maxUsdgAmount != 0) {
+  //       if (maxUsdgAmount < this.vault.getUSDGAmount(state, _tokenIn)) {
+  //           return 0n;
+  //       }
+
+  //       let maxAmountIn = maxUsdgAmount.sub(
+  //           this.vault.getUSDGAmount(state, _tokenIn)
+  //       );
+  //       maxAmountIn = maxAmountIn.mul(10**tokenInDecimals).div(
+  //           10**this.USDG_DECIMALS
+  //       );
+  //       maxAmountIn = maxAmountIn.mul(this.PRICE_PRECISION).div(priceIn);
+
+  //       if (amountIn > maxAmountIn) {
+  //           return maxAmountIn;
+  //       }
+  //   }
+
+  //   return amountIn;
+  // }
+
   // Reference to the original implementation
   // https://github.com/gmx-io/gmx-contracts/blob/master/contracts/peripherals/Reader.sol#L71
   async getAmountOut(

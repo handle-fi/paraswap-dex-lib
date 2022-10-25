@@ -14,10 +14,13 @@ import {
 import { Tokens } from '../../../tests/constants-e2e';
 import { HandleFiConfig } from './config';
 import ReaderABI from '../../abi/handle-fi/Reader.json';
+import VaultPriceFeedABI from '../../abi/handle-fi/VaultPriceFeed.json';
 import { ADDRESS_TO_CURRENCY, SYMBOL_TO_ADDRESS } from './handle-config';
+import { fetchEncodedSignedQuotes } from './fetchSignedQuote';
 
 const network = Network.ARBITRUM;
 const TokenASymbol = 'WETH';
+const TokenACurrency = 'ETH';
 const TokenA = Tokens[network][TokenASymbol];
 
 const TokenBSymbol = 'fxUSD';
@@ -38,6 +41,7 @@ const amounts = [
 const dexKey = 'HandleFi';
 const params = HandleFiConfig[dexKey][network];
 const readerInterface = new Interface(ReaderABI);
+const vaultPriceFeedInterface = new Interface(VaultPriceFeedABI);
 
 describe('HandleFi', function () {
   it('getPoolIdentifiers and getPricesVolume SELL', async function () {
@@ -74,30 +78,46 @@ describe('HandleFi', function () {
       checkPoolPrices(poolPrices!, amounts, SwapSide.SELL, dexKey);
     }
 
-    // TODO figure out a way to test this without the on chain call
-    // // Do on chain pricing based on reader to compare
-    // const readerCallData = amounts.map(a => ({
-    //   target: params.reader,
-    //   callData: readerInterface.encodeFunctionData('getAmountOut', [
-    //     params.vault,
-    //     TokenA.address,
-    //     TokenB.address,
-    //     a.toString(),
-    //   ]),
-    // }));
+    const data = await fetchEncodedSignedQuotes([
+      TokenA.address,
+      TokenB.address,
+    ]);
 
-    // const readerResult = (
-    //   await dexHelper.multiContract.methods
-    //     .aggregate(readerCallData)
-    //     .call({}, blocknumber)
-    // ).returnData;
-    // const expectedPrices = readerResult.map((p: any) =>
-    //   BigInt(
-    //     readerInterface.decodeFunctionResult('getAmountOut', p)[0].toString(),
-    //   ),
-    // );
+    // Do on chain pricing based on reader to compare
+    const readerCallData = amounts.map(a => ({
+      target: params.reader,
+      callData: readerInterface.encodeFunctionData('getAmountOut', [
+        params.vault,
+        TokenA.address,
+        TokenB.address,
+        a.toString(),
+      ]),
+    }));
 
-    // expect(poolPrices![0].prices).toEqual(expectedPrices);
+    const priceUpdateCalldata = {
+      target: params.priceFeed,
+      callData: vaultPriceFeedInterface.encodeFunctionData(
+        'h2sofaApplySignedQuote',
+        [data],
+      ),
+    };
+    try {
+      const readerResult = (
+        await dexHelper.multiContract.methods
+          .aggregate([priceUpdateCalldata, ...readerCallData])
+          .call({}, blocknumber)
+      ).returnData;
+      return;
+      const expectedPrices = readerResult.map((p: any) =>
+        BigInt(
+          readerInterface.decodeFunctionResult('getAmountOut', p)[0].toString(),
+        ),
+      );
+
+      expect(poolPrices![0].prices).toEqual(expectedPrices);
+    } catch (e) {
+      console.log(e);
+    }
   });
 
   it('getTopPoolsForToken', async function () {

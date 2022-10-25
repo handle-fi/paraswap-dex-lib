@@ -42,7 +42,7 @@ export const fetchEncodedSignedQuotes = async (
   tokens: string[],
 ): Promise<string> => {
   const signedQuotes = await fetchSignedQuotes(
-    tokens.map(t => ADDRESS_TO_CURRENCY[t]),
+    tokens.map(t => ADDRESS_TO_CURRENCY[t.toLowerCase()]),
   );
   return encodeQuotes(signedQuotes);
 };
